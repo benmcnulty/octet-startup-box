@@ -1,5 +1,5 @@
 # octet-box — "Startup in a Box"
-## Project Specification v0.7
+## Project Specification v0.8
 **Repo:** `octet-box` (new, public, MIT)
 **Owner:** octet:ois / Ben McNulty
 **Target:** Locally-served pure HTML/CSS/JS web app + zero-dep Node.js server
@@ -215,14 +215,17 @@ PHASE 5 — ONGOING OPERATIONS (steady state)
 ### 6.1 Topbar (always visible)
 
 ```
-[◈ octet:box]  [Org Name]  Phase: Org Draft  |  [●  Octet Pulse]  [Autonomy ○──●]  [Queue: 3 ▼]
+[◈ octet:box]  [Org Name]  Phase: Org Draft  |  [●  Octet Pulse]  [Autonomy ○──●]  [Thinking: 2]  [Coding: 1]  [Queue: 3 ▼]  [Board ↗]
 ```
 
 - **Org Name**: editable inline on click
 - **Phase label**: clicking opens Phase Progress panel
 - **Octet Pulse indicator**: animated state (see §12.2)
 - **Autonomy Toggle**: ON/OFF for autonomous Pulse actions
+- **Thinking badge**: number of healthy `thinking` source lanes and their active model assignments; clicking opens Sources config
+- **Coding badge**: number of healthy `coding` source lanes and their active model assignments; clicking opens Sources config
 - **Queue badge**: count of pending inference jobs; clicking opens Inference Queue panel (see §18)
+- **Board link**: opens `/the-board` in a dedicated observation layout (see §6.6)
 
 ### 6.2 Left Sidebar
 
@@ -272,6 +275,7 @@ LEFT SIDEBAR
 | Meeting Builder | `meeting-builder` | 2+ |
 | Meeting Room | `meeting` | 2+ |
 | One-on-One | `1on1` | 2+ |
+| The Board | `board` | 2+ |
 | Timeline | `timeline` | 3+ |
 | Artifact Viewer | `artifacts` | 1+ |
 
@@ -301,17 +305,56 @@ A persistent floating bar appears at the bottom of every view once a meeting pla
 
 This bar is the visual anchor of the Universal Context Attachment System (§19).
 
+### 6.6 Board Endpoint — `/the-board`
+
+`/the-board` is a dedicated observation surface for founders, board members, and operator stakeholders. It is not a second application. It is a specialized route over the same live state, queue, meetings, and timeline data.
+
+Core requirements:
+
+- fullscreen billboard mode for wall displays and large monitors
+- responsive quick-dashboard mode for phones, tablets, and laptops
+- zoom levels: `wall`, `room`, and `detail`
+- clickable drill-down tiles for workstreams, meetings, queue lanes, personas, and timeline items
+- live grouping of who is working on what by department, team, role, and active queue assignment
+- persistent **[Quick Note]** action that opens an overlay modal and routes the note to Octet immediately
+
+Representative board tiles:
+
+- Org workload map
+- Development workflows in progress
+- Live meeting wall
+- Queue lane utilization
+- Strategic tensions and approvals
+- Timeline now / next / blocked
+
+Each tile can open a focused billboard view without leaving `/the-board`. Example: clicking a live meeting tile opens a meeting-first display showing the current agenda item, speaking persona, consensus state, and linked artifacts.
+
 ---
 
 ## 7. Setup Panel — Phase 0
 
-### 7.1 Ollama Auto-Detection
+### 7.1 Inference Source Auto-Detection
 
-On page load: `GET /api/ollama/models`. States:
-- **Connected**: green pulse dot, model list populates, no user action needed
-- **Not found**: amber dot — "Ollama not detected on :11434. [Retry] [Setup Guide ▾]"
-- Setup Guide expands inline with install/start instructions
-- Auto-retries every 5 seconds
+On page load: `GET /api/sources`.
+
+First-run defaults:
+- **Coding default**: local Ollama at `http://localhost:11434`
+- **Thinking default**: a user-configurable networked Ollama endpoint, persisted once saved
+
+Every source card exposes **[Test ↺]**. For Ollama-compatible sources, the status check calls `GET /api/tags` against the configured host and stores the runtime response:
+- connection status
+- discovered model list for dropdown selection
+- model count
+- response time and last-checked timestamp
+- currently selected model for that source record
+
+States:
+- **Connected**: green pulse dot, discovered models populate the source dropdown
+- **Needs Configuration**: amber dot — host missing or not yet saved
+- **Unreachable**: amber dot — last test failed, last successful model list remains visible but stale-badged
+- **Error**: red dot — invalid auth, malformed endpoint, or non-Ollama response
+
+Local sources auto-retry every 5 seconds during setup. Networked and cloud sources retry on demand and whenever the user saves the source record.
 
 ### 7.2 Input Fields
 
@@ -1657,9 +1700,14 @@ Octet advances timeline items during Pulse ticks:
 
 ### 18.1 Purpose
 
-All Ollama inference calls are managed through a single sequential queue. This prevents resource contention on limited hardware and provides full visibility into what the system is doing and what is pending.
+Inference is managed through a workload-aware queue with dynamic source lanes. Jobs are classified as either `thinking` or `coding`, routed to healthy configured sources for that workload, and executed with full visibility into what is running, where it is running, and which agent or persona owns it.
 
-No parallel inference calls. One job runs at a time.
+Default first-run topology:
+- one `coding` lane backed by the local Ollama endpoint
+- one `thinking` lane backed by a networked Ollama endpoint
+- additional lanes appear automatically as more healthy sources are configured and enabled
+
+Meeting turns remain sequential inside a single meeting context even when multiple source lanes exist.
 
 ### 18.2 Queue Item Structure
 
@@ -1669,12 +1717,21 @@ No parallel inference calls. One job runs at a time.
   id: string,
   type: "ingest-analyst" | "persona-generate" | "persona-memory-update" |
         "meeting-agenda" | "meeting-turn" | "pulse-tick" | "vacancy-scan" |
-        "artifact-generate" | "timeline-advance" | "1on1-turn",
+      "artifact-generate" | "timeline-advance" | "1on1-turn" |
+      "quick-note-route" | "coder-file-generate" | "workflow-snapshot",
   label: string,               // human-readable description
   agentId: string,             // "octet", "analyst", persona id, etc.
+    workload: "thinking" | "coding",
+    sourceRole: "thinking" | "coding",
+    requestedSourceId: string | null,
+    assignedSourceId: string | null,
+    assignedModel: string | null,
   estimatedTokens: number,
   priority: 1 | 2 | 3,        // 1 = immediate (user action), 2 = normal, 3 = background
   status: "pending" | "running" | "completed" | "failed" | "skipped",
+    sequential: boolean,
+    contextRecipeId: string | null,   // assemble fresh context at execution time
+    contextVersion: number | null,
   enqueuedAt: string,
   startedAt: string | null,
   completedAt: string | null,
@@ -1688,30 +1745,38 @@ No parallel inference calls. One job runs at a time.
 ### 18.3 Queue Panel (Right Panel Tab 2)
 
 ```
-⏱ Inference Queue                      [Pause All] [Clear Completed]
-──────────────────────────────────────────────────────────────────
-▶ RUNNING
-  ⟳  Meeting Turn — Marcus Webb (CTO)
-     Tech Stack Review  •  Est. 340 tokens
-     [████████░░░░░░░░] 58%
+⏱ Inference Queue  [Thinking: 2] [Coding: 1]      [Pause All] [Clear Completed]
+────────────────────────────────────────────────────────────────────────────────
+▶ RUNNING — THINKING LANES
+  T1  ⟳  Meeting Turn — Marcus Webb (CTO)
+      Source: think-net-01  •  Model: qwen3:32b  •  Est. 340 tokens
+      [████████░░░░░░░░] 58%
 
-── PENDING (3) ────────────────────────────────────────────────────
-  2  Meeting Turn — Octet (facilitator)           [Skip] [↑]
-     Est. 120 tokens  •  Priority: 1
+  T2  ⟳  Pulse Tick #48
+      Source: think-net-02  •  Model: llama3.3:70b  •  Est. 200 tokens
 
-  1  Memory Update — Sarah Chen                   [Skip] [↑]
-     Post-meeting synthesis  •  Est. 580 tokens  •  Priority: 2
+▶ RUNNING — CODING LANES
+  C1  ⟳  Coder File Generate — Marcus Webb
+      Source: code-local-01  •  Model: qwen2.5-coder:14b  •  Est. 420 tokens
+
+── PENDING — THINKING (2) ─────────────────────────────────────────
+  1  Quick Note Route — Board Observation          [Skip]
+     Priority: 1  •  Octet routing  •  Source policy: thinking-default
+
+  2  Memory Update — Sarah Chen                    [Skip] [↑]
+     Post-meeting synthesis  •  Priority: 2  •  Context: v18
      ⚠ Requires Approval  [Approve]
 
-  3  Pulse Tick #48                               [Skip]
-     Background  •  Est. 200 tokens  •  Priority: 3
+── PENDING — CODING (1) ───────────────────────────────────────────
+  3  Workflow Snapshot — Sprint 1 Dev Board        [Skip]
+     Priority: 2  •  Source policy: coding-default
 
 ── COMPLETED (12) ─────────────────────────────────────────────────
   ✓  Persona Generate — Layla Torres (CPO)    14:01  [View]
   ✓  Meeting Agenda — Tech Stack Review       13:58  [View]
   ... (collapsible)
-──────────────────────────────────────────────────────────────────
-Est. queue completion: ~4 min  |  Model: llama3.2  |  Jobs: 3/∞
+────────────────────────────────────────────────────────────────────────────────
+Est. queue completion: ~4 min  |  Healthy lanes: 3  |  Jobs: 3/∞
 ```
 
 ### 18.4 Queue Behavior
@@ -1720,15 +1785,20 @@ Est. queue completion: ~4 min  |  Model: llama3.2  |  Jobs: 3/∞
 - **Priority 2 (normal)**: Octet-directed operational tasks
 - **Priority 3 (background)**: Pulse-driven autonomous maintenance
 
-If a meeting is running, meeting turns are all Priority 1 and skip the queue (processed in order within the meeting context).
+- **Workload routing**: planning, meetings, Pulse, memory synthesis, and strategic reasoning default to `thinking`; coder personas, development workflow views, scaffold enhancement, and implementation-oriented jobs default to `coding`
+- **Dynamic scaling**: each healthy enabled source contributes one or more worker lanes based on `maxConcurrentJobs`; the queue opens and closes lanes as source health changes
+- **Source assignment happens at start time**: pending items hold a context recipe, not a frozen context package; `ContextPackager` assembles the final package immediately before execution
+- **Quick Note refresh behavior**: every Quick Note enqueues a Priority 1 `quick-note-route` job, Octet updates `context/org/board-notes.md`, increments `contextVersion`, and all pending jobs recompute their package before they start
+
+If a meeting is running, meeting turns are all Priority 1 within the meeting lane and still execute in strict turn order.
 
 **[Pause All]** — halts queue processing after current job. All pending items remain. Resume with [Resume].
 
-**User can reorder** Priority 2/3 items by drag or [↑] button.
+**User can reorder** Priority 2/3 items by drag or [↑] button within their workload grouping.
 
 ### 18.5 Queue Persistence
 
-Queue state written to `/octet-box-data/queue/queue.json` after every job state change. On server restart, pending jobs resume (meeting context jobs are re-initialized from transcript).
+Queue state written to `/octet-box-data/queue/queue.json` after every job state change. Source health and model selections persist in `/octet-box-data/config/sources.json`. On server restart, pending jobs resume after the source registry rehydrates healthy lanes and meeting context jobs are re-initialized from transcript.
 
 ---
 
@@ -1820,6 +1890,8 @@ octet-box-data/                    ← ORGANIZATION DATA ROOT (gitignored, never
   timeline/
   artifacts/
   coders/
+  notes/
+  interface-modules/
   queue/
 ```
 
@@ -1890,134 +1962,140 @@ No manual migration steps. No data loss. Organization resumes exactly where it l
 
 ## 21. Inference Source Management
 
-### 21.1 Supported Sources
+### 21.1 Source Pools And Workload Roles
 
-| Source | Type | Auth | Parallel Support |
+Inference sources are organized into two logical workload pools:
+
+| Pool | Purpose | Default Topology | Typical Jobs |
 |---|---|---|---|
-| **Local Ollama** | Local process | None | No (sequential only) |
-| **Networked Ollama** | LAN/remote HTTP | Optional bearer token | No (sequential by default) |
-| **OpenRouter** | Cloud API | API key | Yes |
-| **OpenAI** | Cloud API | API key | Yes |
-| **Anthropic** | Cloud API | API key | Yes |
+| **Thinking** | strategy, synthesis, meetings, Pulse, memory, planning | networked Ollama on first run | Octet, ANALYST, meeting facilitation, memory updates |
+| **Coding** | implementation-oriented, repo-aware, tool-ready tasks | local Ollama on first run | coder persona files, development workflow snapshots, future code agents |
 
-### 21.2 Inference Source Configuration UI
+The system supports multiple configured sources per pool. A source record belongs to one pool, but identical provider types may appear multiple times with different hosts, models, or auth settings.
 
-Accessible from: Topbar model selector dropdown → **[⚙ Configure Sources]**
+### 21.2 Supported Providers
+
+| Provider | Deployment | Auth | Model Discovery | Default Concurrency |
+|---|---|---|---|---|
+| **Local Ollama** | local process | None | `GET /api/tags` | 1 |
+| **Networked Ollama** | LAN/remote HTTP | Optional bearer token | `GET /api/tags` | 1 |
+| **OpenRouter** | Cloud API | API key | provider list / configured catalog | configurable |
+| **OpenAI** | Cloud API | API key | configured catalog | configurable |
+| **Anthropic** | Cloud API | API key | configured catalog | configurable |
+
+### 21.3 Source Record Configuration UI
+
+Accessible from: Topbar source badges → **[⚙ Configure Sources]**
 
 ```
 Inference Sources
-──────────────────────────────────────────────────────────────
-Primary Source: [▼ Local Ollama              ]
-Status: ● Connected — 7 models available
+────────────────────────────────────────────────────────────────
+[Thinking Sources]                              [+ Add Thinking]
 
-─── Source Configuration ─────────────────────────────────────
+  think-net-01  ● Connected  9 models discovered  42ms
+  Label: [Networked Ollama - Strategy           ]
+  Host:  [http://192.168.1.50:11434             ]  [Test ↺]
+  Model: [▼ qwen3:32b                           ]
+  Max Concurrent Jobs: [1]
 
-[▼ Local Ollama]
-  Host: [http://localhost:11434     ]  [Test ↺]
+[Coding Sources]                                [+ Add Coding]
 
-[▼ Networked Ollama]
-  Host: [http://192.168.1.50:11434  ]  [Test ↺]
-  Token: [optional bearer token     ]
-
-[▼ OpenRouter]
-  API Key: [sk-or-...               ]  [Test ↺]
-  Default Model: [▼ meta-llama/llama-3.2-8b ]
-
-[▼ OpenAI]
-  API Key: [sk-...                  ]  [Test ↺]
-  Default Model: [▼ gpt-4o-mini     ]
-
-[▼ Anthropic]
-  API Key: [sk-ant-...              ]  [Test ↺]
-  Default Model: [▼ claude-sonnet-4-6 ]
+  code-local-01  ● Connected  6 models discovered  12ms
+  Label: [Local Ollama - Coding                 ]
+  Host:  [http://localhost:11434                ]  [Test ↺]
+  Model: [▼ qwen2.5-coder:14b                   ]
+  Tooling Profile: [▼ coding                    ]
+  Max Concurrent Jobs: [1]
 
 [Save Sources]
-──────────────────────────────────────────────────────────────
-Processing Mode: [● Sequential]  [○ Parallel]
-  Parallel mode available when primary source supports it.
-  ⚠ Parallel mode may incur higher API costs.
+────────────────────────────────────────────────────────────────
+Routing Summary:
+  Thinking default → think-net-01
+  Coding default   → code-local-01
 ```
 
-API keys are stored in `octet-box-data/config/sources.json` — never in the application directory, never in git.
+Each source record maintains its own persisted selected model and discovered-model dropdown. The UI does not assume a single global model selector.
 
-### 21.3 Per-Persona Model Assignment
+### 21.4 Runtime Health Checks And Model Discovery
 
-Each persona can be assigned a model from any configured source:
+Status checks are runtime calls to the configured inference endpoint. For Ollama-compatible providers the check is `GET /api/tags`, which returns both liveness and the current model list.
+
+The stored status payload for each source includes:
+
+```javascript
+{
+  id: string,
+  label: string,
+  role: "thinking" | "coding",
+  provider: "ollama-local" | "ollama-network" | "openrouter" | "openai" | "anthropic",
+  host: string,
+  enabled: boolean,
+  selectedModel: string | null,
+  discoveredModels: string[],
+  lastStatus: "connected" | "unreachable" | "error" | "needs-config",
+  lastLatencyMs: number | null,
+  lastCheckedAt: string | null,
+  maxConcurrentJobs: number
+}
+```
+
+This payload is persisted to `octet-box-data/config/sources.json`. Status is refreshed on startup, on manual test, and whenever a lane fails and needs reassessment.
+
+### 21.5 Workload Routing
+
+Queue items declare their workload role up front. Routing policy is then applied in this order:
+
+1. explicit `requestedSourceId`, if present and healthy
+2. workload pool default (`thinking` or `coding`)
+3. next healthy source in the same pool with available capacity
+4. optional fallback source in the same pool
+
+Queue labels always surface the selected workload and assigned source so the operator can see whether a job is being handled as `thinking` or `coding`.
+
+### 21.6 Per-Persona And Per-Workflow Model Assignment
+
+Each persona, workflow, and board view can target a source record rather than a provider class:
 
 ```
 Persona Edit — Model
-  Source: [▼ Anthropic                     ]
-  Model:  [▼ claude-sonnet-4-6             ]
-  Fallback: [▼ Local Ollama > llama3.2     ]  ← if primary unavailable
+  Workload: [▼ coding                           ]
+  Source:   [▼ code-local-01                    ]
+  Model:    [▼ qwen2.5-coder:14b                ]
+  Fallback: [▼ code-local-02                    ]
 ```
 
-Octet always uses the primary source. Individual personas can use different sources — enabling e.g. a CTO persona on a code-capable model while others run locally.
+Octet defaults to the `thinking` pool unless a task explicitly requires `coding` behavior or tool-ready execution.
 
-### 21.4 Unified API Adapter (`inferenceAdapter.js`)
+### 21.7 Unified API Adapter (`inferenceAdapter.js`)
 
 A single adapter module normalizes all sources to a common interface. All agent code calls the adapter — never a source directly.
 
 ```javascript
 // server/inferenceAdapter.js
 export async function chat(config) {
-  // config: { source, model, messages, stream, onToken }
-  // Returns: { text: string, tokensUsed: number, source: string }
-  switch (config.source) {
-    case "ollama-local":   return ollamaChat(config)
-    case "ollama-network": return ollamaChat(config)  // same API, different host
-    case "openrouter":     return openRouterChat(config)
-    case "openai":         return openAIChat(config)
-    case "anthropic":      return anthropicChat(config)
-  }
+  // config: { sourceId, role, model, messages, tools, stream, onToken }
+  // Returns: { text, tokensUsed, sourceId, role, model }
 }
 ```
 
-Streaming is normalized: all sources emit tokens via the same `onToken(token)` callback, which feeds the SSE stream regardless of source.
+Streaming is normalized: all sources emit tokens via the same `onToken(token)` callback, which feeds the SSE stream regardless of provider. Coding-designated sources may also expose a tool-capable execution profile through the same adapter contract.
 
-### 21.5 Sequential vs. Parallel Processing
+### 21.8 Dynamic Queue Scaling And Telemetry
 
-**Sequential mode (default):** One inference job runs at a time. Safe for all sources. Required for local Ollama.
+The queue derives its worker lanes from the enabled healthy source set. One source can contribute one lane or many depending on `maxConcurrentJobs` and provider capability.
 
-**Parallel mode:** Available when primary source is OpenRouter, OpenAI, or Anthropic. Toggle in Sources config.
+Parallelizable job groups include:
+- persona memory updates after a meeting
+- coder file regeneration jobs
+- independent board snapshot jobs
+- Pulse sub-tasks with no data dependency
 
-When parallel mode is ON, the queue processor groups independent jobs and dispatches them concurrently:
+Non-parallelizable jobs include:
+- meeting turns inside a meeting
+- phase-dependent generation chains
+- any queue item marked `sequential: true`
 
-```javascript
-// Parallelizable job groups (no data dependency between them):
-// - Multiple persona memory updates after a meeting
-// - Multiple persona coder file regenerations
-// - Concurrent domain plan generation for different personas
-// - Independent pulse-tick sub-tasks
-
-// Non-parallelizable (strict sequential):
-// - Meeting turns (must be in order)
-// - Phase-dependent generation (persona before memory)
-// - Any job marked sequential: true in queue item
-```
-
-Queue panel in parallel mode shows concurrent job slots:
-
-```
-⏱ Inference Queue  [Parallel Mode ●]          [Pause] [Clear]
-──────────────────────────────────────────────────────────────
-▶ RUNNING (3 concurrent)
-  ⟳ Memory Update — Sarah Chen       Anthropic claude-sonnet-4-6
-  ⟳ Memory Update — Marcus Webb      Anthropic claude-sonnet-4-6
-  ⟳ Memory Update — Layla Torres     Anthropic claude-sonnet-4-6
-```
-
-Parallel mode is indicated in the topbar with a `⋮⋮` icon next to the queue count.
-
-### 21.6 Cost Tracking (Cloud Sources)
-
-For cloud API sources, the system tracks token usage per job and accumulates a session total:
-
-```javascript
-// Appended to each QueueItem on completion
-{ tokensUsed: { input: 1240, output: 380 }, estimatedCost: 0.0024, source: "anthropic" }
-```
-
-Session cost summary visible in the Sources config panel and in run logs.
+For cloud sources, token and cost metrics are stored per job. For local and networked Ollama sources, latency and throughput are recorded instead so operators can compare real runtime behavior across lanes.
 
 ---
 
@@ -2470,6 +2548,45 @@ The persona-level `CLAUDE.md` and `AGENTS.md` specified in §10.7 are a speciali
 
 The `/coders/{personaId}/` directory at the data root contains symlink-ready copies of the persona's coder files, organized so that a user can point any coding agent's working directory there and get the full persona + org context immediately.
 
+### 23.12 Organization Interface Extension Kit
+
+The application supports organization-specific interface development without modifying the core application shell. Custom surfaces compose through a stable extension layer rather than patching internal store logic or core view modules directly.
+
+Principles:
+
+- core routes, queue logic, source routing, meetings, and state remain application-owned
+- custom interfaces consume versioned adapters, not internal modules
+- built-in components and workflow modules provide reference implementations for common startup operating patterns
+- extension surfaces must remain backwards compatible through an abstraction filter that shields organization-specific implementations from internal refactors
+
+Shipped reference modules include:
+
+- development workflow board
+- project and milestone board
+- live meeting wall
+- queue lane monitor
+- persona workload map
+
+In-app documentation is required:
+
+- `/docs/style-guide` — visual tokens, layout patterns, animation rules, responsiveness guidance
+- `/docs/interface-api` — board adapters, action contracts, manifest schema, compatibility rules
+
+Extension contract example:
+
+```javascript
+// public/js/extensions/registry.js
+registerBoardView({
+  id: "dev-workflow",
+  title: "Development Workflow",
+  supportsZoom: true,
+  minPhase: 2,
+  render(adapter, mountNode) {}
+})
+```
+
+Organization-specific modules live in `octet-box-data/interface-modules/` and are loaded through a versioned manifest. They may read from a stable `BoardDataAdapter` and emit typed actions only. They must not import the core store, queue internals, or private component implementations directly.
+
 
 ## 24. AppState Schema
 
@@ -2477,13 +2594,24 @@ Full `state.json` schema. Single source of truth.
 
 ```javascript
 {
-  version: "0.4",
+  version: "0.5",
   orgName: string,
   description: string,
   phase: 0 | 1 | 2 | 3 | 4 | 5,
   autonomyEnabled: boolean,
-  selectedModel: string,
+  contextVersion: number,            // increments whenever pending jobs must recompose context
   pulseIntervalSeconds: number,       // default: 60
+
+  inferenceRouting: {
+    sourcePools: {
+      thinking: InferenceSourceRecord[],
+      coding: InferenceSourceRecord[]
+    },
+    defaultSourceIds: {
+      thinking: string | null,
+      coding: string | null
+    }
+  },
 
   inputs: {
     websiteUrl?: string,
@@ -2567,6 +2695,34 @@ Full `state.json` schema. Single source of truth.
     dueDate: string | null
   }[],
 
+  quickNotes: {
+    id: string,
+    text: string,
+    authorLabel: string,
+    source: "the-board" | "meeting" | "manual",
+    status: "received" | "routed" | "applied" | "archived",
+    appliedContextVersion: number | null,
+    createdAt: string,
+    routedAt: string | null
+  }[],
+
+  boardState: {
+    activeView: string,
+    focusEntityId: string | null,
+    zoom: "wall" | "room" | "detail",
+    lastViewedAt: string | null
+  },
+
+  interfaceExtensions: {
+    manifestVersion: string,
+    modules: {
+      id: string,
+      enabled: boolean,
+      compatibilityRange: string,
+      lastLoadedAt: string | null
+    }[]
+  },
+
   createdAt: string,
   updatedAt: string
 }
@@ -2588,7 +2744,7 @@ Full `state.json` schema. Single source of truth.
 | Ollama | Native `fetch` | Proxy + streaming |
 | Repo APIs | Native `fetch` | GitHub, GitLab, etc. |
 | HTML parse | `HtmlTextExtractor` | Zero-dep pure function |
-| Queue | In-memory + `queue.json` | Simple sequential processor |
+| Queue | In-memory + `queue.json` + source lanes | Workload-aware multi-lane processor |
 
 **Zero npm dependencies. `node server.js` only.**
 
@@ -2596,8 +2752,13 @@ Full `state.json` schema. Single source of truth.
 
 ```
 GET  /                          serve index.html
+GET  /the-board                 serve board observation route
 GET  /api/ollama/models         proxy GET /api/tags
 POST /api/ollama/chat           proxy POST /api/chat (streaming forwarded)
+GET  /api/sources               read configured inference sources + health
+PUT  /api/sources               write source configuration
+POST /api/sources/test          test a source and refresh its model list
+GET  /api/sources/:id/models    read persisted discovered model list for a source
 POST /api/ingest                trigger ingestion pipeline
 GET  /api/context               list context file tree
 GET  /api/context/:path         read context file
@@ -2612,6 +2773,8 @@ PUT  /api/timeline/:id          update timeline item state
 GET  /api/queue                 read inference queue
 POST /api/queue                 enqueue job
 PUT  /api/queue/:id             update job (approve, skip, reorder)
+GET  /api/board                 read aggregated board state
+POST /api/notes/quick           submit a Quick Note to Octet
 GET  /api/meetings/:id          read meeting directory listing
 GET  /api/meetings/:id/:file    read meeting file
 GET  /api/events                SSE stream
@@ -2658,6 +2821,16 @@ POST /api/folder-read           process webkitdirectory file batch
 { type: "queue:completed",      data: { jobId } }
 { type: "queue:failed",         data: { jobId, error } }
 { type: "queue:approval",       data: { jobId, label } }
+{ type: "queue:assigned",       data: { jobId, sourceId, role, model } }
+
+// Sources
+{ type: "source:status",        data: { sourceId, status, latencyMs } }
+{ type: "source:models",        data: { sourceId, models } }
+
+// Board + Quick Note
+{ type: "quick-note:received",  data: { noteId } }
+{ type: "quick-note:applied",   data: { noteId, contextVersion } }
+{ type: "board:focus",          data: { viewId, entityId } }
 
 // Octet
 { type: "octet:feed",           data: { entry } }
@@ -2744,8 +2917,8 @@ octet-box/
     stateManager.js                  # read/write state.json
     ollamaClient.js                  # Ollama API wrapper (streaming-capable)
     promptLoader.js                  # load + interpolate prompts
-    contextPackager.js               # context package assembly (§9)
-    inferenceQueue.js                # sequential job queue processor
+    sourceRegistry.js                # persisted source config + health + model discovery
+    inferenceQueue.js                # workload-aware queue + dynamic source lanes
     runLogger.js                     # JSONL audit log
     ingestors/
       htmlTextExtractor.js           # zero-dep pure function
@@ -2762,6 +2935,7 @@ octet-box/
       phase3-org.js
       phase4-growth.js
     agents/
+      contextPackager.js             # context package assembly (§9)
       analyst.js
       architect.js
       personaGenerator.js
@@ -2784,16 +2958,24 @@ octet-box/
     fileWatcher.js                   # fs.watch wrapper → re-integration detection
   public/
     index.html
+    the-board.html
+    docs/
+      style-guide.html               # design tokens + layout usage
+      interface-api.html             # extension API + compatibility guide
     css/
       main.css                       # CSS vars, reset, layout grid
       components.css                 # cards, panels, forms, tags
       animations.css                 # pulse, transitions, typing, shimmer
+      board.css                      # billboard and focus-board layouts
       org-canvas.css                 # tree layout, vacancy cards
       meeting-room.css               # chat layout, message bubbles
       timeline.css                   # three-state timeline
       queue.css                      # queue panel
     js/
       app.js                         # init, SSE listener, view router
+      extensions/
+        adapter.js                   # stable abstraction filter for custom modules
+        registry.js                  # built-in + org module registration
       views/
         setup.js
         ingestionMonitor.js
@@ -2803,6 +2985,8 @@ octet-box/
         meetingBuilder.js
         meetingRoom.js
         oneOnOne.js
+        theBoard.js
+        boardFocus.js
         timeline.js
         artifactViewer.js
       components/
@@ -2812,6 +2996,7 @@ octet-box/
         phaseProgress.js
         modelSelector.js
         queuePanel.js
+        quickNoteModal.js
         meetingPlanBar.js            # floating attachment bar
         contextAttach.js             # ⊕ attach button + toast
         memoryViewer.js              # persona memory tabs
@@ -2836,12 +3021,14 @@ octet-box/
     meetings/
     timeline/
     artifacts/
+    notes/
     queue/
     config/
       sources.json               # API keys + source config (never in git)
     prompts-override/              # user-customized prompts
     templates-override/            # user-customized templates
     coders/                        # CLAUDE.md + AGENTS.md per coder persona
+    interface-modules/             # org-specific UI modules behind adapter boundary
   .gitignore
   .env.example                       # DATA_DIR, PORT, PULSE_INTERVAL (no API keys — those go in sources.json)
   package.json                       # { "type": "module" }, scripts only, no deps
@@ -2855,7 +3042,7 @@ octet-box/
 
 ### In Scope (v0.1 Prototype)
 
-**New in v0.7:**
+**New in v0.8:**
 - [x] Agent Integration Scaffolding: CLAUDE.md + AGENTS.md at every data directory level
 - [x] Artifact-level scaffold files with quality assessment + enhancement guidance
 - [x] ScaffoldManager module: auto-generates on directory/artifact creation
@@ -2871,9 +3058,10 @@ octet-box/
 - [x] State schema versioning + migration chain
 - [x] Prompt user-override system (`prompts-override/`)
 - [x] Inference source management: Local Ollama, Networked Ollama, OpenRouter, OpenAI, Anthropic
+- [x] Multiple `thinking` and `coding` source records with persisted model selection
 - [x] Per-persona model + source assignment with fallback
 - [x] `inferenceAdapter.js` unified API wrapper
-- [x] Sequential/parallel processing toggle (parallel for cloud sources)
+- [x] Workload-aware queue with dynamic source lanes
 - [x] Cost tracking for cloud API sources
 - [x] Persona processing states: `ready`, `processing`, `queued`, `inactive`
 - [x] Processing animation + prerequisite queue gating
@@ -2883,12 +3071,15 @@ octet-box/
 - [x] Template user overrides (`templates-override/`)
 - [x] Template version tracking in generated file frontmatter
 - [x] Stale template detection + bulk regeneration
+- [x] `/the-board` billboard route with drill-down views
+- [x] Quick Note overlay routed to Octet and applied to pending job context
+- [x] Interface extension kit with in-app style guide and API docs
 
 
 **Infrastructure**
 - [x] Zero-dep Node.js HTTP server
 - [x] Pure HTML/CSS/JS frontend, ESM modules
-- [x] Ollama auto-detection + model selector + auto-retry
+- [x] Thinking/coding source auto-detection + per-source model discovery + auto-retry
 - [x] SSE real-time event stream
 - [x] AppState persistence + resume on reload
 
@@ -2953,11 +3144,22 @@ octet-box/
 - [x] Octet state transitions
 
 **Inference Queue**
-- [x] Sequential queue processor
+- [x] Multi-lane queue processor grouped by `thinking` and `coding`
 - [x] Queue panel (right panel)
 - [x] Priority system (1/2/3)
 - [x] Pause/resume + approve/skip controls
 - [x] Queue persistence (`queue.json`)
+
+**Board Observability**
+- [x] `/the-board` route with fullscreen and quick-dashboard modes
+- [x] Work grouped by team, role, and active task
+- [x] Click-through focus views for meetings, workstreams, and queue lanes
+- [x] Quick Note overlay modal routed through Octet
+
+**Interface Extension System**
+- [x] Built-in workflow reference modules for common startup operations
+- [x] Stable adapter boundary for org-specific interface modules
+- [x] In-app style guide and interface API documentation
 
 **Universal Attachment**
 - [x] `⊕` attach button on all context files
@@ -2967,9 +3169,9 @@ octet-box/
 
 ### Out of Scope for v0.1
 - GitLab / Bitbucket / Codeberg (stubbed, GitHub only)
-- Mobile-responsive layout
+- Full authoring parity for every core workspace on mobile
 - Multi-user / shared sessions
-- Cloud inference backends
+- Cloud-only operation with no Ollama-capable source available
 - Export to external tools
 - Custom Octet system prompt editing (v0.2)
 
@@ -2995,8 +3197,8 @@ octet-box/
 16. Page reload resumes all state correctly from `state.json`
 17. `octet-box-data/` is a sibling to `octet-box/`; `git pull` on app dir does not alter org data
 18. State schema migration runs automatically on version mismatch; backup created
-19. Inference source config: all 5 sources configurable; API keys stored only in `sources.json` (data dir)
-20. Parallel mode enabled for cloud sources; queue panel shows concurrent slots
+19. Inference source config supports multiple `thinking` and `coding` source records; selected models and auth are stored only in `sources.json` (data dir)
+20. Queue scales across healthy source lanes; queue panel shows assigned source, workload role, and model per running job
 21. Saving an edited persona transitions card to `processing` state; queue gates dependent jobs
 22. Enabling Coder on a persona generates `CLAUDE.md` + `AGENTS.md` in both persona dir and `/coders/{id}/`
 23. Template version recorded in every generated file's frontmatter; stale badge shown in UI when template updated
@@ -3010,6 +3212,14 @@ octet-box/
 31. Every artifact directory contains `CLAUDE.md` + `AGENTS.md`; quality assessment section is inference-filled
 32. File watcher detects external edits to `octet-box-data/`; Octet Feed shows "External changes detected" with re-sync option
 33. Scaffold viewer in Context Explorer shows [Export as .zip ↗]; exported zip opens in IDE with CLAUDE.md readable by agent
+34. First-run source setup provisions a local `coding` Ollama source and a configurable networked `thinking` Ollama source; each source test fetches and persists a live model list
+35. Operators can add multiple `thinking` and `coding` sources, each with its own selected model, health state, and concurrency setting
+36. Every queue item is labeled `thinking` or `coding` and assigned to a healthy source lane before execution
+37. A Quick Note submitted from `/the-board` creates a Priority 1 Octet routing job, updates `context/org/board-notes.md`, and bumps `contextVersion`
+38. Pending jobs that have not started recompose their context package against the latest `contextVersion` before execution
+39. `/the-board` renders correctly in fullscreen billboard mode and responsive quick-dashboard mode across phone, tablet, laptop, and large-monitor sizes
+40. `/the-board` shows who is working on what grouped by workstream, team, role, and active meeting or queue assignment, with clickable drill-down views
+41. In-app style guide and interface API docs are available, and org-specific interface modules load only through the documented adapter boundary
 
 ---
 
@@ -3022,10 +3232,10 @@ octet-box/
 > Build sequence — confirm completion and await instruction before each step:
 >
 > **Step 1 — Server foundation**
-> `server.js` (raw http, static serving, MIME map), `router.js`, `sseEmitter.js`, `stateManager.js` (AppState schema §23, partial patch, schema version migration chain), `inferenceAdapter.js` (unified adapter across all 5 sources — see §21.4), `inferenceQueue.js` (sequential + parallel modes, priority levels, prerequisite gating, persist to queue.json). Establish `octet-box-data/` sibling directory structure from §20.2 on first run.
+> `server.js` (raw http, static serving, MIME map), `router.js`, `sseEmitter.js`, `stateManager.js` (AppState schema §24, partial patch, schema version migration chain), `sourceRegistry.js` (persisted source pools, health checks, model discovery), `inferenceAdapter.js` (unified adapter across all configured sources — see §21.7), `inferenceQueue.js` (workload-aware lanes, priority levels, prerequisite gating, contextVersion refresh, persist to queue.json). Establish `octet-box-data/` sibling directory structure from §20.2 on first run.
 >
 > **Step 2 — Frontend shell**
-> `public/index.html`: full layout from §6 (topbar, left sidebar, main canvas, right panel), CSS variables from §5, CSS grid layout, no content yet. `app.js`: SSE listener mapped to store, view router, phase change handler. `state/store.js` + `state/sseHandler.js`.
+> `public/index.html`: full layout from §6 (topbar, left sidebar, main canvas, right panel), CSS variables from §5, CSS grid layout, no content yet. `public/the-board.html`: dedicated observation shell for `/the-board`. `app.js`: SSE listener mapped to store, view router, phase change handler. `state/store.js` + `state/sseHandler.js`.
 >
 > **Step 3 — Ingestion pipeline + template system**
 > `htmlTextExtractor.js`, `repoDetector.js`, `githubIngestor.js` (FetchQueue), `websiteIngestor.js`, `folderIngestor.js`. `contextPackager.js`. `promptLoader.js` (defaults + override lookup). `templateFiller.js` (static + infer block resolution, fillManifest, frontmatter version tagging). Setup view + Ingestion Monitor view.
@@ -3034,10 +3244,10 @@ octet-box/
 > `personaGenerator.js`, `memoryManager.js`, `coderFileGenerator.js`. Phase 2 founding council. Persona processing states (ready/processing/queued/inactive) with shimmer animation and prerequisite queue gating. Persona card + edit interface + memory viewer. Coder persona toggle + CLAUDE.md/AGENTS.md generation via `templateFiller.js`. Founding Council view.
 >
 > **Step 5 — Octet + Org Canvas**
-> `octetAgent.js` (pulse loop, feed entries, approval gating). `architect.js` (OrgManifest, vacancy scan). Org Canvas view (tree + list, department/team/role structure, vacancy cards). Timeline foundation (`timelineManager.js`, `_timeline.md` generation, Timeline view).
+> `octetAgent.js` (pulse loop, feed entries, approval gating, Quick Note routing). `architect.js` (OrgManifest, vacancy scan). Org Canvas view (tree + list, department/team/role structure, vacancy cards). Timeline foundation (`timelineManager.js`, `_timeline.md` generation, Timeline view). Initial `/the-board` workload and workstream tiles.
 >
 > **Step 6 — Meeting system**
-> `meetingOrchestrator.js` (context package assembly, turn sequencing, rolling summary). Meeting Builder view. Meeting Room view (board + autonomous). 1:1 view. Universal attachment (`contextAttach.js`, `meetingPlanBar.js`). Inference Queue panel.
+> `meetingOrchestrator.js` (context package assembly, turn sequencing, rolling summary). Meeting Builder view. Meeting Room view (board + autonomous). 1:1 view. Universal attachment (`contextAttach.js`, `meetingPlanBar.js`). Inference Queue panel. Complete `/the-board` with live meeting wall, queue drill-downs, Quick Note overlay, and interface extension documentation.
 >
 > Constraints:
 > - All server: ESM, `node:` prefix, zero npm deps
@@ -3054,4 +3264,4 @@ octet-box/
 
 ---
 
-*Spec v0.7 — Agent Integration Scaffolding | 2026-03-28 | octet:ois / Ben McNulty*
+*Spec v0.8 — Multi-Channel Inference + Board Observability | 2026-03-28 | octet:ois / Ben McNulty*

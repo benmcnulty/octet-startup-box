@@ -2,7 +2,7 @@
 
 ## Context
 
-Octet OIS is announcing its first named beta product: **Startup in a Box** — a locally-hosted organizational intelligence environment (spec: `octet-startup-box-spec.md` v0.7). This plan covers two sequential workstreams: (1) adding a product page and landing page update to the live octetois.com website, then (2) building the full prototype in the octet-startup-box repository.
+Octet OIS is announcing its first named beta product: **Startup in a Box** — a locally-hosted organizational intelligence environment (spec: `octet-startup-box-spec.md` v0.8). This plan covers two sequential workstreams: (1) adding a product page and landing page update to the live octetois.com website, then (2) building the full prototype in the octet-startup-box repository.
 
 **Repos:**
 
@@ -125,6 +125,14 @@ Step 6: Meetings + Attachment (needs: Octet, timeline from Step 5; personas from
 
 No circular dependencies. Each step produces a testable, committable increment.
 
+### v0.8 Foundation Adjustments
+
+- Inference is no longer modeled as a single endpoint plus model selector. The foundation now requires multiple persisted source records grouped into `thinking` and `coding` pools.
+- First-run defaults must prove the architecture with a local Ollama `coding` source and a networked Ollama `thinking` source.
+- Queue behavior must scale by healthy source lanes and label all jobs as `thinking` or `coding`.
+- `/the-board` is a required application route with fullscreen billboard mode, responsive quick dashboard mode, clickable drill-downs, and a Quick Note overlay routed through Octet.
+- Organization-specific interface development must happen through a documented extension layer with built-in example modules, an in-app style guide, and in-app interface API documentation.
+
 ### Ambiguity Log
 
 | # | Ambiguity | Resolution |
@@ -134,6 +142,7 @@ No circular dependencies. Each step produces a testable, committable increment.
 | 3 | Template files referenced but no content provided | Author all ~30 templates as part of each step |
 | 4 | Prompt files referenced but no content provided | Author all ~25 prompts iteratively, test with Ollama at each step |
 | 5 | 14 scaffold template pairs listed but content unspecified | Author as part of Step 6 (scaffoldManager) |
+| 6 | `/the-board` requires responsive support while broader mobile parity remains limited | Board route is in scope for responsive quick-dashboard behavior; full authoring parity across all core views remains out of scope |
 
 ### Mock/Fixture Strategy
 
@@ -154,13 +163,14 @@ No circular dependencies. Each step produces a testable, committable increment.
 | 3 | SSE connection drops | Lost real-time updates | Server heartbeat 30s; client exponential backoff reconnect |
 | 4 | fs.watch platform inconsistency | Missed file changes | 300ms debounce; ENOENT catch; macOS-specific testing |
 | 5 | Meeting context exceeds model window | Hallucination/repetition | ContextRollingManager summarizes every 10 exchanges |
+| 6 | Multiple local/networked endpoints drift out of health or model sync | Misrouted or stalled jobs | SourceRegistry health checks, persisted model discovery, lane reassignment, stale badges in UI |
 
 ### Step Sizing — Hardest Challenge Per Step
 
 | Step | Hardest Part | Approach |
 | --- | --- | --- |
-| 1 | inferenceQueue: priority + prerequisites + persistence + restart resume | Build queue as isolated module, 15+ unit tests before anything depends on it |
-| 2 | CSS grid 3-column layout with 10 switchable views | Define all view containers up front; show/hide via `data-view` + phase gating |
+| 1 | inferenceQueue: workload routing + source lanes + persistence + restart resume | Build queue with SourceRegistry first, then test lane assignment, contextVersion refresh, and restart resume before any dependent feature lands |
+| 2 | CSS grid layout plus `/the-board` billboard responsiveness | Define core app shell and board shell together early so shared tokens, zoom behavior, and responsiveness remain coherent |
 | 3 | ANALYST-driven iterative FetchQueue (multi-round inference) | Strict 10-round/30-file hard cap; JSON parse with fallback; tested with fixtures |
 | 4 | Processing state machine with queue gating | State FSM in stateManager; queue checks prerequisites before dequeue |
 | 5 | Octet Pulse consensus framework (5 modes) | Implement Ratification first (simplest); add modes incrementally; each mode tested |
@@ -180,42 +190,48 @@ CLAUDE.md             — agent session context
 
 ### Step 1: Server Foundation
 
-**Files** (10):
+**Files** (11):
 
 - `server.js` — `node:http`, static serving, MIME map, router import
 - `server/router.js` — route table from §25.2, 501 stubs for unimplemented
 - `server/sseEmitter.js` — client registry, broadcast, heartbeat, cleanup
 - `server/stateManager.js` — read/write/patch state.json, migration chain, backup
+- `server/sourceRegistry.js` — persisted source pools, health checks, model discovery, lane config
 - `server/inferenceAdapter.js` — unified `chat()` routing to source adapters
 - `server/inferenceAdapters/ollamaAdapter.js` — streaming NDJSON parsing
 - `server/inferenceAdapters/openRouterAdapter.js` — stub
 - `server/inferenceAdapters/openAIAdapter.js` — stub
 - `server/inferenceAdapters/anthropicAdapter.js` — stub
-- `server/inferenceQueue.js` — priority queue, prerequisites, persistence, pause/resume, approval gate
-- `server/ollamaClient.js` — /api/tags proxy, health check
+- `server/inferenceQueue.js` — workload-aware queue, source lanes, persistence, pause/resume, approval gate, context refresh
+- `server/ollamaClient.js` — Ollama `/api/tags` + `/api/chat` helper for local/networked sources
 - `server/runLogger.js` — JSONL append logger with PackageManifest
 - `server/promptLoader.js` — load from defaults + override, YAML frontmatter, interpolation
 
-**Tests**: stateManager, inferenceQueue, sseEmitter, promptLoader (node:test)
+**Tests**: stateManager, sourceRegistry, inferenceQueue, sseEmitter, promptLoader (node:test)
 
-**Verify**: `node server.js` starts, serves static, SSE connects, `/api/state` returns initial state, queue persists across restart.
+**Verify**: `node server.js` starts, serves static, SSE connects, `/api/state` returns initial state, `/api/sources` returns default thinking/coding records, queue persists across restart.
 
 ### Step 2: Frontend Shell
 
-**Files** (10):
+**Files** (13):
 
 - `public/index.html` — 3-column grid, topbar, 10 view containers
+- `public/the-board.html` — fullscreen billboard shell + responsive quick dashboard shell
 - `public/css/main.css` — §5 palette, grid layout, topbar, sidebar, right panel
 - `public/css/components.css` — cards, buttons, inputs, badges
 - `public/css/animations.css` — pulse, shimmer, typing, phase transition
+- `public/css/board.css` — board tiles, zoom states, fullscreen and responsive layouts
 - `public/js/app.js` — SSE + reconnect, view router, phase handler
 - `public/js/state/store.js` — client state mirror, subscribe pattern
 - `public/js/state/sseHandler.js` — map all 26 SSE events to store
 - `public/js/components/phaseProgress.js` — sidebar phase tracker
 - `public/js/components/queuePanel.js` — right panel queue tab
 - `public/js/components/octetFeed.js` — right panel feed tab
+- `public/js/views/theBoard.js` — board route shell, tiles, zoom controls
+- `public/js/components/quickNoteModal.js` — reusable overlay for board notes and injected operational notes
+- `public/js/components/modelSelector.js` — source-aware thinking/coding selectors
 
-**Verify**: Layout renders, SSE connects, view switching works.
+**Verify**: Core layout renders, `/the-board` opens, SSE connects, source badges update, view switching works.
 
 ### Step 3: Ingestion + Templates
 
@@ -257,31 +273,33 @@ CLAUDE.md             — agent session context
 
 ### Step 5: Octet + Org Canvas
 
-**Files** (5 server + 4 frontend + 8 prompts + 6 templates):
+**Files** (6 server + 6 frontend + 8 prompts + 6 templates):
 
 - `server/agents/octetAgent.js` — pulse loop, consensus, feed, approval
 - `server/agents/architect.js` — OrgManifest, vacancy scan
 - `server/agents/timelineManager.js` — 3-state model, _timeline.md
+- `server/boardService.js` — aggregated workload, workstream, meeting, and queue projections for `/the-board`
 - `server/phases/phase3-org.js` — org structure orchestrator
 - `server/phases/phase4-growth.js` — vacancy fill orchestrator
-- Frontend: orgCanvas.js, timeline.js, timelineItem.js + CSS files
+- Frontend: orgCanvas.js, timeline.js, timelineItem.js, theBoard.js, boardFocus.js, workloadMap.js + CSS files
 - Prompts: 8 Octet/architect prompts
 - Templates: 6 timeline/artifact/scaffold templates
 
-**Verify**: Org structure visible, vacancies detected, timeline shows items, Pulse fires.
+**Verify**: Org structure visible, vacancies detected, timeline shows items, Pulse fires, `/the-board` shows grouped work by team/role/workstream.
 
 ### Step 6: Meetings + Attachment
 
-**Files** (3 server + 8 frontend + 10 prompts + 6 templates):
+**Files** (4 server + 11 frontend + 10 prompts + 6 templates):
 
 - `server/agents/meetingOrchestrator.js` — context assembly, turns, rolling summary
 - `server/scaffoldManager.js` — CLAUDE.md + AGENTS.md at all directory levels
 - `server/fileWatcher.js` — fs.watch + debounce + SSE events
-- Frontend: meetingBuilder.js, meetingRoom.js, oneOnOne.js, artifactViewer.js, meetingPlanBar.js, contextAttach.js + CSS files
+- `server/quickNoteService.js` — Priority 1 note routing, board note persistence, pending-job context invalidation
+- Frontend: meetingBuilder.js, meetingRoom.js, oneOnOne.js, artifactViewer.js, meetingPlanBar.js, contextAttach.js, quickNoteModal.js, liveMeetingWall.js, projectBoard.js, docs/styleGuide.js, docs/interfaceApi.js + CSS files
 - Prompts: 10 meeting prompts
 - Templates: 6 meeting/artifact templates
 
-**Verify**: All 33 Definition of Done items pass. Cold start to Org Canvas under 15 minutes on 7B.
+**Verify**: All 41 Definition of Done items pass. Cold start to Org Canvas under 15 minutes on a 7B model. Quick Note updates pending context before queued jobs start.
 
 ### Post-Build: Website Update
 
@@ -325,7 +343,7 @@ After all 33 DoD items pass:
 
 ### Prototype
 
-- All 33 Definition of Done items from spec §29
+- All 41 Definition of Done items from spec §29
 - `node server.js` starts with zero installs
 - Full test suite green: `npm test && npm run test:e2e`
 - `git ls-files octet-box-data/` returns 0 files (CI check)

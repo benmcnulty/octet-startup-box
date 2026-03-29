@@ -38,6 +38,12 @@ Startup in a Box is not a chatbot and not a one-shot generator. It is a persiste
 
 Agents should preserve that product identity in naming, UX, and architecture decisions.
 
+The system now includes:
+
+- multi-channel inference pools for `thinking` and `coding`
+- a dedicated `/the-board` observation route
+- a stable extension layer for organization-specific interfaces
+
 ## Non-Negotiable Architecture
 
 These rules come directly from the spec and must not be bypassed:
@@ -53,6 +59,9 @@ These rules come directly from the spec and must not be bypassed:
 9. The application source tree is read-only at runtime.
 10. `octet-box-data/` must never be committed to git.
 11. Every agent call must log a PackageManifest describing included and excluded context.
+12. Source configuration, endpoint health, and model discovery must go through the source registry. Do not hardcode a single inference endpoint or a single global model selector.
+13. Queue items must be labeled and routed by workload role: `thinking` or `coding`.
+14. Organization-specific UI must compose through the documented extension API and adapter boundary, not by patching core app views for one-off workflows.
 
 If a proposed change would bypass one of these seams, redesign the change instead of patching around the rule.
 
@@ -71,8 +80,10 @@ Build in the planned order. Do not skip ahead unless the user explicitly asks fo
 Respect dependencies between steps. For example:
 
 - do not add meeting orchestration before queue, state, prompts, and context packaging exist
+- do not reintroduce a single-endpoint inference assumption after source pools are established
 - do not write generated persona or artifact files outside the template pipeline
 - do not add cloud-only inference flows because Ollama is required for MVP
+- do not implement org-specific custom interfaces by coupling directly to private store or queue internals
 
 ## Working Style
 
@@ -116,6 +127,7 @@ Respect dependencies between steps. For example:
 - Prefer simple DOM composition over client-side framework patterns
 - Use SSE for live updates where specified in the spec
 - Follow the three-column layout and phase-unlocked view model from the spec
+- Treat `/the-board` as a first-class product surface with billboard and responsive quick-dashboard behavior
 
 ### CSS
 
@@ -159,6 +171,7 @@ High-priority verification targets include:
 4. SSE events still reflect server-side activity accurately
 5. generated files land in the data directory, not the app directory
 6. core architectural seams are not bypassed
+7. pending jobs pick up the latest `contextVersion` after Quick Notes or context updates
 
 If you cannot run a validation step, say so explicitly.
 
@@ -176,6 +189,8 @@ When reviewing or proposing a patch, check for these failure modes first:
 8. Broken heading structure or missing frontmatter in markdown-driven files
 9. Missing persistence, resume, or audit logging behavior
 10. UI changes that ignore the spec's phase model, observability, or dark-system visual language
+11. Hardcoded inference routing that ignores `thinking` and `coding` workload pools
+12. Org-specific custom UI that bypasses the documented extension adapter boundary
 
 ## Collaboration Rules For Agents
 
