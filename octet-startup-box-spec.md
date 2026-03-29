@@ -1,6 +1,6 @@
 # octet-box — "Startup in a Box"
 ## Project Specification v0.8
-**Repo:** `octet-box` (new, public, MIT)
+**Repo:** `octet-startup-box` (new, public, MIT)
 **Owner:** octet:ois / Ben McNulty
 **Target:** Locally-served pure HTML/CSS/JS web app + zero-dep Node.js server
 **Status:** Pre-development — agent planning input
