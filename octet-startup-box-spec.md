@@ -1,5 +1,7 @@
 # octet-box — "Startup in a Box"
+
 ## Project Specification v0.8
+
 **Repo:** `octet-startup-box` (new, public, MIT)
 **Owner:** octet:ois / Ben McNulty
 **Target:** Locally-served pure HTML/CSS/JS web app + zero-dep Node.js server
@@ -49,6 +51,7 @@
 The application is not a generator and not a chatbot. It is a **founder's operating system**: a persistent, self-sustaining organizational simulation where AI personas hold domain expertise, accumulate memory, participate in structured meetings, and autonomously advance organizational work — all under the founder's full observability and control.
 
 **The self-sustaining loop:**
+
 ```
 Context → Org Structure → Persona Memory → Meetings → Artifacts → Timeline
     ↑                                                                  │
@@ -195,12 +198,14 @@ PHASE 5 — ONGOING OPERATIONS (steady state)
 ```
 
 **Typography:**
+
 - Interface chrome: `IBM Plex Mono` — technical authority
 - Agent speech + content: `Inter` — readable, neutral
 - Persona names: `DM Mono` — distinct identity
 - Meeting chat: monospace, 0.9rem
 
 **Motion guidelines:**
+
 - Phase transitions: 300ms slide-in from right, ease-out
 - Pulse indicator: CSS `@keyframes` radial glow, 2s loop
 - New persona card: scale(0.95)→scale(1) + fade-in, 250ms
@@ -338,10 +343,12 @@ Each tile can open a focused billboard view without leaving `/the-board`. Exampl
 On page load: `GET /api/sources`.
 
 First-run defaults:
+
 - **Coding default**: local Ollama at `http://localhost:11434`
 - **Thinking default**: a user-configurable networked Ollama endpoint, persisted once saved
 
 Every source card exposes **[Test ↺]**. For Ollama-compatible sources, the status check calls `GET /api/tags` against the configured host and stores the runtime response:
+
 - connection status
 - discovered model list for dropdown selection
 - model count
@@ -349,6 +356,7 @@ Every source card exposes **[Test ↺]**. For Ollama-compatible sources, the sta
 - currently selected model for that source record
 
 States:
+
 - **Connected**: green pulse dot, discovered models populate the source dropdown
 - **Needs Configuration**: amber dot — host missing or not yet saved
 - **Unreachable**: amber dot — last test failed, last successful model list remains visible but stale-badged
@@ -413,10 +421,12 @@ export function extractText(rawHtml) { ... }
 | Generic | any `.git` URL | Raw URL conventions |
 
 **ANALYST FetchQueue loop** (GitHub and APIs that support it):
+
 ```javascript
 // FetchQueue emitted by ANALYST after each seed/round
 { items: [{ path: string, reason: string }], done?: boolean }
 ```
+
 Orchestrator resolves each path, appends to IngestBuffer, re-calls ANALYST until `done: true` or hard stop.
 
 ### 8.4 Context File Tree
@@ -442,6 +452,7 @@ Orchestrator resolves each path, appends to IngestBuffer, re-calls ANALYST until
 ```
 
 **Every file has frontmatter:**
+
 ```markdown
 ---
 octet:context-type: org/identity
@@ -565,6 +576,7 @@ This enables surgical context inclusion: "give me just the 'Decision Style' sect
 ### 10.1 Founding Council (Phase 2)
 
 Three sequential Ollama calls after context review:
+
 1. **CEO** — visionary, derives from org identity + strategy context
 2. **Co-Founder A** — technical domain (inferred from tech stack)
 3. **Co-Founder B** — business/market domain (inferred from audience context)
@@ -620,6 +632,7 @@ A persona can be in one of four states, visually indicated on their card:
 | `inactive` | `○` grey dot | Manually deactivated — excluded from all workflows |
 
 When a persona enters `processing` or `queued` state:
+
 - They are excluded from any new meeting assignments and Pulse actions
 - Any queued jobs that depend on this persona are paused until they return to `ready`
 - The queue processor inserts their prerequisite jobs (generation, memory init, knowledge init) at Priority 1 ahead of dependent tasks
@@ -663,6 +676,7 @@ This ensures the system never calls a persona with incomplete or stale context.
 ### 10.5 Persona Edit Interface
 
 Inline panel, no modals:
+
 - Editable: Name, Role, Background, Expertise (tags), Personality, Decision Style, Model
 - **[⚙ System Prompt]** accordion: full prompt text editable + [Regenerate from profile ↺]
 - **[Save Changes]** → updates `state.json` + `profile.md` → immediately live
@@ -700,6 +714,7 @@ When enabled and the persona is saved, two additional files are generated into t
 These files are also written to `/coders/{personaId}/CLAUDE.md` and `/coders/{personaId}/AGENTS.md` — structured so that symlinking or copying them into any project directory gives the coding agent the persona's full context.
 
 **CLAUDE.md template structure:**
+
 ```markdown
 # {{persona.name}} — {{persona.role}}
 
@@ -726,6 +741,7 @@ These files are also written to `/coders/{personaId}/CLAUDE.md` and `/coders/{pe
 ```
 
 **AGENTS.md template structure:**
+
 ```markdown
 # Agent Context — {{persona.name}} ({{persona.role}})
 # Organization: {{orgName}}
@@ -753,6 +769,7 @@ These files are also written to `/coders/{personaId}/CLAUDE.md` and `/coders/{pe
 ```
 
 **Generation process (queued as Priority 1 after persona save):**
+
 1. Load persona files: `profile.md`, `memory.md`, `knowledge.md`, `relationships.md`
 2. Load org context: `tech/stack.md`, `tech/architecture.md`, `org/identity.md`
 3. Call inference: fill all `{{generated: ...}}` template sections using the declared context sources
@@ -760,6 +777,7 @@ These files are also written to `/coders/{personaId}/CLAUDE.md` and `/coders/{pe
 5. SSE: `persona:coder-files-ready` → card updates to show `[🖥]` badge + [Open Coder Files ↗] button
 
 **Re-generation triggers:**
+
 - Persona profile edited + saved (if coder mode on)
 - Memory file updated (debounced — regenerates after 60s of no further updates)
 - [Regenerate Coder Files ↺] manual button on persona card
@@ -886,6 +904,7 @@ All four tabs correspond to the four persona files. Every file is fully editable
 ### 11.5 Memory Update Triggers
 
 Memory is updated automatically after:
+
 - Any meeting the persona participated in (post-meeting Octet synthesis pass)
 - Any autonomous task completed by the persona
 - Manual edit by user
@@ -902,6 +921,7 @@ Memory updates are queued to the Inference Queue (§18) to avoid blocking the ma
 Octet is the permanent meta-agent — not a persona, not a participant. It orchestrates, narrates, synthesizes, and maintains ground truth. Identified in UI by `◈` symbol and `--color-octet` (electric cyan) on every surface it touches.
 
 Octet has access to:
+
 - Full `_index.md` (always)
 - Current `state.json` phase + persona roster
 - Timeline (all three states)
@@ -909,6 +929,7 @@ Octet has access to:
 - All meeting transcripts (H1+H2 depth by default, full on demand)
 
 **Octet system prompt** (`/prompts/defaults/octet-system.md`):
+
 ```
 You are Octet, the orchestration intelligence for {{orgName}}.
 You are the organizational operating system — not a persona, not a participant.
@@ -952,6 +973,7 @@ Octet selects a consensus mode based on the decision type, urgency, and number o
 | **Deferral** | Insufficient information | Decision formally deferred → Octet creates a research/investigation action item → re-queues |
 
 The current consensus mode is always visible in the meeting canvas during any decision point:
+
 ```
 ◈ Octet  [Deliberative Mode]  Seeking alignment on: Python ML layer decision
 ```
@@ -1023,6 +1045,7 @@ DecisionRecords are referenced by persona memory updates, timeline entries, and 
 Octet treats dissent as organizationally valuable, not as an obstacle to route around.
 
 When a persona registers an objection:
+
 1. Octet names the objection explicitly in the ConsensusMap and DecisionRecord — it is not softened or omitted
 2. If the decision proceeds over the objection, the dissent is flagged as a `ReviewTrigger` — Octet will resurface it at the next relevant milestone
 3. The dissenting persona's memory is updated with the outcome and their recorded position
@@ -1118,6 +1141,7 @@ Pulse Tick (every N seconds, configurable 30–300s):
 ```
 
 **Pulse indicator states (topbar):**
+
 - `OFF` — grey static dot
 - `ON / idle` — slow cyan glow, 2s pulse
 - `ON / working` — fast cyan pulse + spinner arc
@@ -1219,23 +1243,28 @@ The org is structured as: **Departments → Teams → Roles → Personas**
 ### 13.3 Department / Team / Role Management
 
 **Add Department:**
+
 - [+ Department] → inline form: Name, Description, Head (select from personas or leave vacant)
 - [Generate with Octet ↺] → Octet proposes department structure from context
 
 **Add Team:**
+
 - [+ Team] within department → Name, Description, Lead
 - Teams inherit department context for agent prompts
 
 **Add Role:**
+
 - [+ Role] within team → Title, Domain, Mandate, Priority
 - [Generate Role Description ↺] → Octet writes mandate from title + team context
 - Role created as vacancy unless persona assigned
 
 **Fill Role (one click):**
+
 - From vacancy card: [Fill with Existing →] → persona selector dropdown
 - From vacancy card: [Generate New Persona →] → queues persona generation with role context pre-filled
 
 **Bulk operations:**
+
 - [Run Vacancy Scan ↺] → Octet reviews full org + context → emits VacancyReport → highlights missing roles
 - [Auto-fill All Critical Vacancies] → queues persona generation for all `priority: critical` vacancies (requires approval if autonomy off)
 
@@ -1335,6 +1364,7 @@ The [Inject Note] button is always visible during any autonomous meeting. Notes 
 ### 14.3 Octet History Review for Meeting Planning
 
 When [◈ Generate Agenda with Octet ↺] is triggered, Octet receives:
+
 - Meeting type + name + rough agenda text
 - Participant personas (profile.md H1+H2 + memory.md H2 only)
 - Attached context documents (H2 depth)
@@ -1346,6 +1376,7 @@ This gives Octet the context to produce an agenda grounded in organizational his
 ### 14.4 Participant Auto-Suggestion
 
 After meeting type is selected, Octet emits `MeetingSuggestion`:
+
 ```javascript
 {
   suggestedParticipants: [
@@ -1358,6 +1389,7 @@ After meeting type is selected, Octet emits `MeetingSuggestion`:
   ]
 }
 ```
+
 Suggestions appear inline in the builder as [Add] chips — one click to accept.
 
 ---
@@ -1473,6 +1505,7 @@ This ensures coherence across long meetings without context overflow.
 ```
 
 **`summary.md` structure:**
+
 ```markdown
 # Tech Stack Review — Meeting Summary
 
@@ -1535,6 +1568,7 @@ Topic:   [Help me plan the Python ML investigation spec   ]
 ### 16.3 1:1 Context
 
 The persona receives:
+
 - Their own `system-prompt.md`
 - Their `memory.md` (full — this is their domain)
 - Their `knowledge.md` (full)
@@ -1689,6 +1723,7 @@ Organization Timeline                    [+ Add Item]  [◈ Auto-Advance ↺]
 ### 17.6 Octet Timeline State Transitions
 
 Octet advances timeline items during Pulse ticks:
+
 - `planned → active`: when a meeting starts, sprint kicks off, or user clicks [Start]
 - `active → completed`: when a meeting ends, sprint closes, or [Mark Complete]
 - Octet writes a completion summary to the item's `.md` file
@@ -1703,6 +1738,7 @@ Octet advances timeline items during Pulse ticks:
 Inference is managed through a workload-aware queue with dynamic source lanes. Jobs are classified as either `thinking` or `coding`, routed to healthy configured sources for that workload, and executed with full visibility into what is running, where it is running, and which agent or persona owns it.
 
 Default first-run topology:
+
 - one `coding` lane backed by the local Ollama endpoint
 - one `thinking` lane backed by a networked Ollama endpoint
 - additional lanes appear automatically as more healthy sources are configured and enabled
@@ -1935,6 +1971,7 @@ export const migrations = {
 Prompts in `/prompts/` can evolve with application updates. User-customized prompts must be preserved.
 
 **Pattern:**
+
 - Application ships prompts in `/prompts/defaults/` — read-only source of truth
 - User customizations go to `octet-box-data/prompts-override/` — same filename, takes precedence
 - `promptLoader.js` checks override directory first, falls back to defaults
@@ -2085,12 +2122,14 @@ Streaming is normalized: all sources emit tokens via the same `onToken(token)` c
 The queue derives its worker lanes from the enabled healthy source set. One source can contribute one lane or many depending on `maxConcurrentJobs` and provider capability.
 
 Parallelizable job groups include:
+
 - persona memory updates after a meeting
 - coder file regeneration jobs
 - independent board snapshot jobs
 - Pulse sub-tasks with no data dependency
 
 Non-parallelizable jobs include:
+
 - meeting turns inside a meeting
 - phase-dependent generation chains
 - any queue item marked `sequential: true`
@@ -2147,11 +2186,13 @@ Templates live in `/templates/` in the application root (version-controlled):
 Templates use two types of insertions:
 
 **Static interpolation** `{{variable}}` — filled by the template engine from known data:
+
 ```
 {{persona.name}}, {{persona.role}}, {{orgName}}, {{timestamp}}, {{templateVersion}}
 ```
 
 **Inference fill** `{{infer: context-spec | instruction}}` — filled by an Ollama/API call:
+
 ```
 {{infer: persona.expertise + tech/stack.md H2 | Write this persona's coding philosophy in 3 sentences}}
 {{infer: persona.memory.md "Open Items" | List current priorities as bullet points}}
@@ -2178,6 +2219,7 @@ export async function fill(templatePath, variables, inferenceSource) {
 ```
 
 The `fillManifest` is appended to the generated file's frontmatter:
+
 ```yaml
 ---
 octet:template: personas/CLAUDE.md.tmpl
@@ -2190,6 +2232,7 @@ octet:fill-manifest: [profile:static, coding-philosophy:inferred, org-context:in
 ### 22.5 User Template Overrides
 
 Users can customize any template:
+
 - Copy template from `/templates/` to `octet-box-data/templates-override/` (same relative path)
 - `TemplateFiller` checks override directory first
 - UI shows `[custom template]` badge when override is active
@@ -2200,6 +2243,7 @@ Application updates to `/templates/` never overwrite user overrides. Users see a
 ### 22.6 Template Version in Generated Files
 
 Every generated file's frontmatter records `octet:template-version`. When a template is updated, the UI surfaces stale files:
+
 - Context Explorer: files with outdated templates show a `[↑ template updated]` badge
 - Persona memory viewer: same badge on stale sections
 - [Regenerate from Updated Template ↺] re-runs fill for that file only
@@ -2284,6 +2328,7 @@ octet-box-data/
 #### CLAUDE.md
 
 Optimized for Claude Code and similar instruction-following coding agents. Prioritizes:
+
 - Precise behavioral directives in imperative language
 - Schema enforcement rules
 - Frontmatter field requirements
@@ -2521,11 +2566,13 @@ architectural patterns, and repository structure...
 When a user enhances content externally and brings it back, the system needs to absorb the changes cleanly. The re-integration contract is:
 
 **What the user does:**
+
 1. Export directory or artifact (zip or direct file edit)
 2. Enhance with frontier model in their IDE or tool of choice
 3. Save enhanced files back to the same path in `octet-box-data/`
 
 **What the system does automatically:**
+
 - File watcher on `octet-box-data/` detects changes (`fs.watch`)
 - Changed files compared against last-known state in context index (`contextIndex` in AppState)
 - For context files: Octet Feed notification — "External changes detected in `tech/stack.md`" → [Re-sync ↺] [View Diff]
@@ -2534,6 +2581,7 @@ When a user enhances content externally and brings it back, the system needs to 
 - Schema validation: frontmatter fields checked — if required fields missing or heading structure broken, warning surfaced in UI with specific repair guidance
 
 **What never changes:**
+
 - File paths — the context index is path-keyed; moving files breaks references
 - `## H2` section headings in context and artifact files — these are structural anchors
 - Frontmatter `octet:context-type` values — these route files to the right agent context slots
@@ -2586,7 +2634,6 @@ registerBoardView({
 ```
 
 Organization-specific modules live in `octet-box-data/interface-modules/` and are loaded through a versioned manifest. They may read from a stable `BoardDataAdapter` and emit typed actions only. They must not import the core store, queue internals, or private component implementations directly.
-
 
 ## 24. AppState Schema
 
@@ -2889,6 +2936,7 @@ All prompts in `/prompts/` as `.md` with YAML frontmatter. Loaded at runtime. `{
 ```
 
 **Context declaration per prompt (frontmatter):**
+
 ```yaml
 ---
 prompt: meeting-participant
@@ -3043,6 +3091,7 @@ octet-box/
 ### In Scope (v0.1 Prototype)
 
 **New in v0.8:**
+
 - [x] Agent Integration Scaffolding: CLAUDE.md + AGENTS.md at every data directory level
 - [x] Artifact-level scaffold files with quality assessment + enhancement guidance
 - [x] ScaffoldManager module: auto-generates on directory/artifact creation
@@ -3052,6 +3101,7 @@ octet-box/
 - [x] Re-integration contract: frontmatter validation + heading structure enforcement
 
 **New in v0.5/v0.6:**
+
 - [x] Autonomous/Board Meeting toggle (not a meeting type)
 - [x] [Inject Note] available in all autonomous meetings
 - [x] File segregation: `octet-box/` vs `octet-box-data/` hard boundary
@@ -3075,8 +3125,8 @@ octet-box/
 - [x] Quick Note overlay routed to Octet and applied to pending job context
 - [x] Interface extension kit with in-app style guide and API docs
 
-
 **Infrastructure**
+
 - [x] Zero-dep Node.js HTTP server
 - [x] Pure HTML/CSS/JS frontend, ESM modules
 - [x] Thinking/coding source auto-detection + per-source model discovery + auto-retry
@@ -3084,6 +3134,7 @@ octet-box/
 - [x] AppState persistence + resume on reload
 
 **Ingestion**
+
 - [x] All 5 input fields + validation
 - [x] HtmlTextExtractor (zero-dep)
 - [x] GitHub ingestion (iterative ANALYST FetchQueue)
@@ -3092,12 +3143,14 @@ octet-box/
 - [x] Context Explorer (browse + edit + re-ingest)
 
 **Context Packaging**
+
 - [x] Markdown heading-based content extraction
 - [x] ContextPackager (frontmatter-declared, token-budgeted)
 - [x] `_index.md` TOC generation and maintenance
 - [x] PackageManifest logging per agent call
 
 **Personas**
+
 - [x] Founding Council generation (CEO + 2 co-founders)
 - [x] Full persona file structure (`/personas/{id}/`)
 - [x] Persona card UI with all action buttons
@@ -3105,24 +3158,28 @@ octet-box/
 - [x] Persona add (manual + generated) + deactivate + clone
 
 **Persona Memory**
+
 - [x] Memory/knowledge/relationships init on persona creation
 - [x] Memory viewer (all 4 tabs, editable)
 - [x] Memory update after meetings
 - [x] Memory inclusion in agent context packages
 
 **Octet**
+
 - [x] Octet meta-agent with org ground truth
 - [x] Octet Pulse heartbeat loop
 - [x] Autonomy Toggle
 - [x] Octet Feed (right panel)
 
 **Org Canvas**
+
 - [x] Department / Team / Role structure
 - [x] Org Canvas (tree view + list view)
 - [x] Vacancy cards + fill flow (existing or generate)
 - [x] Vacancy scan (Octet-driven)
 
 **Meeting System**
+
 - [x] Unified Meeting Builder
 - [x] Meeting type selector + Octet participant/doc suggestions
 - [x] Agenda generation from rough draft
@@ -3132,18 +3189,21 @@ octet-box/
 - [x] Meeting output files (transcript, summary, action items)
 
 **1:1 Interface**
+
 - [x] 1:1 launch from persona card
 - [x] Persona-context-only package
 - [x] Escalate to meeting builder
 - [x] 1:1 transcript → persona memory
 
 **Timeline**
+
 - [x] Three-state timeline model
 - [x] `_timeline.md` auto-maintained by Octet
 - [x] Timeline interface (all views + filtering)
 - [x] Octet state transitions
 
 **Inference Queue**
+
 - [x] Multi-lane queue processor grouped by `thinking` and `coding`
 - [x] Queue panel (right panel)
 - [x] Priority system (1/2/3)
@@ -3151,23 +3211,27 @@ octet-box/
 - [x] Queue persistence (`queue.json`)
 
 **Board Observability**
+
 - [x] `/the-board` route with fullscreen and quick-dashboard modes
 - [x] Work grouped by team, role, and active task
 - [x] Click-through focus views for meetings, workstreams, and queue lanes
 - [x] Quick Note overlay modal routed through Octet
 
 **Interface Extension System**
+
 - [x] Built-in workflow reference modules for common startup operations
 - [x] Stable adapter boundary for org-specific interface modules
 - [x] In-app style guide and interface API documentation
 
 **Universal Attachment**
+
 - [x] `⊕` attach button on all context files
 - [x] `⊕` attach button on all persona cards
 - [x] Floating Meeting Plan bar (all views)
 - [x] Multiple meeting plans
 
 ### Out of Scope for v0.1
+
 - GitLab / Bitbucket / Codeberg (stubbed, GitHub only)
 - Full authoring parity for every core workspace on mobile
 - Multi-user / shared sessions
@@ -3250,6 +3314,7 @@ octet-box/
 > `meetingOrchestrator.js` (context package assembly, turn sequencing, rolling summary). Meeting Builder view. Meeting Room view (board + autonomous). 1:1 view. Universal attachment (`contextAttach.js`, `meetingPlanBar.js`). Inference Queue panel. Complete `/the-board` with live meeting wall, queue drill-downs, Quick Note overlay, and interface extension documentation.
 >
 > Constraints:
+>
 > - All server: ESM, `node:` prefix, zero npm deps
 > - All frontend: vanilla JS ESM, no frameworks, no CDN
 > - All inference calls: through `inferenceAdapter.js` only — never direct fetch to any API
