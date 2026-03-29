@@ -52,7 +52,7 @@ The application is not a generator and not a chatbot. It is a **founder's operat
 
 **The self-sustaining loop:**
 
-```
+```bash
 Context → Org Structure → Persona Memory → Meetings → Artifacts → Timeline
     ↑                                                                  │
     └──────────────── Octet Pulse (continuous synthesis) ─────────────┘
@@ -80,7 +80,7 @@ Everything is local. Everything is editable. Everything is observable in real ti
 
 ### 3.1 Component Map
 
-```
+```bash
 ┌──────────────────────────────────────────────────────────────┐
 │                  Browser (localhost:3000)                     │
 │                                                              │
@@ -133,7 +133,7 @@ Everything is local. Everything is editable. Everything is observable in real ti
 
 Phases persist in `state.json`. App resumes phase on reload. Each phase unlocks new UI panels.
 
-```
+```bash
 PHASE 0 — SETUP
   Ollama auto-detected. Model selected. Context inputs provided.
 
@@ -219,7 +219,7 @@ PHASE 5 — ONGOING OPERATIONS (steady state)
 
 ### 6.1 Topbar (always visible)
 
-```
+```bash
 [◈ octet:box]  [Org Name]  Phase: Org Draft  |  [●  Octet Pulse]  [Autonomy ○──●]  [Thinking: 2]  [Coding: 1]  [Queue: 3 ▼]  [Board ↗]
 ```
 
@@ -236,7 +236,7 @@ PHASE 5 — ONGOING OPERATIONS (steady state)
 
 Always visible. Sections collapse/expand.
 
-```
+```bash
 LEFT SIDEBAR
 ─────────────────────────────
 ▼ Phase Progress
