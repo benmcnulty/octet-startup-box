@@ -1,4 +1,6 @@
-# Startup in a Box — Agent Context
+# Startup in a Box - Agent Context
+
+> Repository status: pre-development specification. This context describes the intended system. Application files and the development commands below are planned and cannot yet be run from this repository.
 
 ## Project Identity
 

@@ -1,5 +1,7 @@
 # Agents Guide - Startup in a Box
 
+> Repository status: pre-development specification. The modules, routes and development commands below are implementation requirements; no application code or tests are currently committed. Use the README to distinguish the planned system from the present source tree.
+
 This file defines how coding agents should operate in this repository. It is intended to work well for Copilot, Codex, Claude Code, and open-weight or self-hosted coding models.
 
 ## Purpose
